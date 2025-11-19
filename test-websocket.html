@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head><title>WebSocket Test</title></head>
+<body>
+<h1>Binance WebSocket Test</h1>
+<div id="status">Testing...</div>
+<div id="output"></div>
+<script>
+const output = document.getElementById('output');
+const status = document.getElementById('status');
+
+try {
+  const ws = new WebSocket('wss://stream.binance.com:9443/stream?streams=btcusdt@ticker');
+  
+  ws.onopen = () => {
+    status.textContent = 'Connected!';
+    status.style.color = 'green';
+  };
+  
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    output.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+  };
+  
+  ws.onerror = (error) => {
+    status.textContent = 'Error: ' + error;
+    status.style.color = 'red';
+  };
+  
+  ws.onclose = () => {
+    status.textContent = 'Disconnected';
+  };
+} catch (e) {
+  status.textContent = 'Exception: ' + e.message;
+  status.style.color = 'red';
+}
+</script>
+</body>
+</html>
