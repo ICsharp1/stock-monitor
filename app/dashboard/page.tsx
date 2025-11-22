@@ -3,14 +3,40 @@
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useAllowedSymbols } from '@/hooks/usePermissions'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 
 export default function DashboardPage() {
   const { symbols: allowedSymbols, loading: permLoading } = useAllowedSymbols()
   const { prices, status, error, reconnect } = useWebSocket(allowedSymbols)
+  const { isOnline, wasOffline } = useOnlineStatus()
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        {/* Offline Warning Banner */}
+        {!isOnline && (
+          <div className="bg-amber-500 text-white py-3 px-4 text-center shadow-md">
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span className="font-medium">You're offline - Prices may not be up to date</span>
+            </div>
+          </div>
+        )}
+
+        {/* Reconnected Banner */}
+        {isOnline && wasOffline && (
+          <div className="bg-green-500 text-white py-3 px-4 text-center shadow-md">
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="font-medium">Back online - Refreshing prices...</span>
+            </div>
+          </div>
+        )}
+
         <div className="max-w-7xl mx-auto p-6 md:p-8">
           {/* Header */}
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">

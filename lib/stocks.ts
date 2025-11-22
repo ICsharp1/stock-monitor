@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/client'
+import { createClient as createBrowserClient } from '@/lib/supabase/client'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 
 export interface Stock {
   id: string
@@ -8,22 +9,15 @@ export interface Stock {
 }
 
 /**
- * Normalize crypto symbol to USDT pair
+ * Normalize crypto symbol (uppercase and trim)
+ * Supports any trading pair (USDT, BTC, EUR, etc.)
  * Examples:
- *   "LINK" -> "LINKUSDT"
- *   "link" -> "LINKUSDT"
- *   "LINKUSDT" -> "LINKUSDT"
+ *   "btcusdt" -> "BTCUSDT"
+ *   "ETHBTC" -> "ETHBTC"
+ *   "  bnbeur  " -> "BNBEUR"
  */
 export function normalizeSymbol(input: string): string {
-  const upper = input.toUpperCase().trim()
-
-  // If already ends with USDT, return as is
-  if (upper.endsWith('USDT')) {
-    return upper
-  }
-
-  // Otherwise append USDT
-  return `${upper}USDT`
+  return input.toUpperCase().trim()
 }
 
 /**
@@ -58,7 +52,7 @@ export async function validateBinanceSymbol(symbol: string): Promise<boolean> {
  */
 export async function getAllStocks(): Promise<Stock[]> {
   try {
-    const supabase = createClient()
+    const supabase = createBrowserClient()
     const { data, error } = await supabase
       .from('stocks')
       .select('*')
@@ -86,10 +80,11 @@ export async function getAllStockSymbols(): Promise<string[]> {
 
 /**
  * Check if a stock symbol already exists in the master list
+ * Server-side only function - uses server Supabase client
  */
 export async function stockExists(symbol: string): Promise<boolean> {
   try {
-    const supabase = createClient()
+    const supabase = await createServerClient()
     const { data, error } = await supabase
       .from('stocks')
       .select('symbol')

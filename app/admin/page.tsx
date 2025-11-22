@@ -26,6 +26,16 @@ export default function AdminPage() {
   const [symbol, setSymbol] = useState('')
   const [name, setName] = useState('')
   const [adding, setAdding] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  // Stock Search
+  const [stockSearchTerm, setStockSearchTerm] = useState('')
+
+  // Filter stocks by search term (symbol or name)
+  const filteredStocks = stocks.filter(stock =>
+    stock.symbol.toLowerCase().includes(stockSearchTerm.toLowerCase()) ||
+    stock.name.toLowerCase().includes(stockSearchTerm.toLowerCase())
+  )
 
   useEffect(() => {
     // CRITICAL: Don't do anything while loading OR if role hasn't been determined yet
@@ -55,11 +65,24 @@ export default function AdminPage() {
     }
   }, [role])
 
+  // Clear message when switching tabs
+  useEffect(() => {
+    setMessage(null)
+  }, [activeTab])
+
+  // Auto-dismiss notifications after 5 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [message])
+
   const fetchStocks = async () => {
     try {
       const res = await fetch('/api/stocks')
       const data = await res.json()
-      setStocks(data.stocks || [])
+      setStocks(data.data?.stocks || [])
     } catch (error) {
       console.error('[Admin] Error fetching stocks:', error)
     }
@@ -83,7 +106,8 @@ export default function AdminPage() {
         throw new Error(data.error || 'Failed to add stock')
       }
 
-      setMessage({ type: 'success', text: `Stock ${data.stock.symbol} added successfully!` })
+      const stockSymbol = data.data?.stock?.symbol || symbol
+      setMessage({ type: 'success', text: `Stock ${stockSymbol} added successfully!` })
       setSymbol('')
       setName('')
       await fetchStocks()
@@ -91,6 +115,39 @@ export default function AdminPage() {
       setMessage({ type: 'error', text: error.message })
     } finally {
       setAdding(false)
+    }
+  }
+
+  const handleDeleteStock = async (stockId: string, stockSymbol: string) => {
+    if (!confirm(`Are you sure you want to delete ${stockSymbol}? This will remove it from all users' permissions.`)) {
+      return
+    }
+
+    setDeleting(stockId)
+    setMessage(null)
+
+    try {
+      const res = await fetch(`/api/stocks/${stockId}`, {
+        method: 'DELETE'
+      })
+
+      const contentType = res.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned an invalid response')
+      }
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete stock')
+      }
+
+      setMessage({ type: 'success', text: `Stock ${stockSymbol} deleted successfully!` })
+      await fetchStocks()
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message })
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -172,39 +229,49 @@ export default function AdminPage() {
             </div>
           </div>
 
+          {/* Messages - Fixed at top */}
+          {message && (
+            <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-2xl w-full mx-4 p-4 rounded-lg shadow-lg flex items-center justify-between ${
+              message.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'
+            }`}>
+              <span>{message.text}</span>
+              <button
+                onClick={() => setMessage(null)}
+                className="ml-4 text-gray-500 hover:text-gray-700 transition-colors"
+                aria-label="Dismiss message"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <div className="p-6">
-            {/* Messages */}
-            {message && (
-              <div className={`mb-6 p-4 rounded-lg ${
-                message.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'
-              }`}>
-                {message.text}
-              </div>
-            )}
 
             {/* Add Stock Tab */}
             {activeTab === 'add-stock' && (
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">Add New Stock to Master List</h2>
                 <p className="text-gray-600 mb-6">
-                  Enter the crypto symbol (e.g., "LINK") and it will be validated with Binance. All stocks are automatically paired with USDT.
+                  Enter the complete trading pair symbol and it will be validated with Binance. Supports any pair (USDT, BTC, EUR, etc.).
                 </p>
 
                 <form onSubmit={handleAddStock} className="max-w-md space-y-4">
                   <div>
                     <label htmlFor="symbol" className="block text-sm font-medium text-gray-700 mb-2">
-                      Crypto Symbol (without USDT)
+                      Trading Pair Symbol
                     </label>
                     <input
                       id="symbol"
                       type="text"
                       value={symbol}
                       onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                      placeholder="LINK"
+                      placeholder="BTCUSDT"
                       required
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Example: LINK → Will become LINKUSDT</p>
+                    <p className="text-xs text-gray-500 mt-1">Examples: BTCUSDT, ETHBTC, BNBEUR</p>
                   </div>
 
                   <div>
@@ -237,17 +304,68 @@ export default function AdminPage() {
             {activeTab === 'view-stocks' && (
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">All Stocks in Master List</h2>
-                <p className="text-gray-600 mb-6">
-                  Total: {stocks.length} stocks
-                </p>
+
+                {/* Stock Search */}
+                <div className="mb-6">
+                  <div className="relative max-w-md">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search by symbol or name..."
+                      value={stockSearchTerm}
+                      onChange={(e) => setStockSearchTerm(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+                    />
+                    {stockSearchTerm && (
+                      <button
+                        onClick={() => setStockSearchTerm('')}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      >
+                        <svg className="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-gray-600 mt-2 text-sm">
+                    {stockSearchTerm
+                      ? `Showing ${filteredStocks.length} of ${stocks.length} stocks`
+                      : `Total: ${stocks.length} stocks`}
+                  </p>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {stocks.map(stock => (
+                  {filteredStocks.map(stock => (
                     <div key={stock.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                      <div className="font-semibold text-gray-900">{stock.name}</div>
-                      <div className="text-sm text-gray-600">{stock.symbol}</div>
-                      <div className="text-xs text-gray-400 mt-2">
-                        Added: {new Date(stock.created_at).toLocaleDateString()}
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-gray-900">{stock.name}</div>
+                          <div className="text-sm text-gray-600">{stock.symbol}</div>
+                          <div className="text-xs text-gray-400 mt-2">
+                            Added: {new Date(stock.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteStock(stock.id, stock.symbol)}
+                          disabled={deleting === stock.id}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          title="Delete stock"
+                        >
+                          {deleting === stock.id ? (
+                            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          )}
+                        </button>
                       </div>
                     </div>
                   ))}

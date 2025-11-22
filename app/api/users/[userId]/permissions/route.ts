@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
+import { ApiError, ApiSuccess } from '@/lib/api-response'
 import { canManageUsers } from '@/lib/permissions-server'
 import { getServerUserRole } from '@/lib/permissions-server'
+import { API_LIMITS } from '@/lib/constants'
 
 /**
  * PUT /api/users/[userId]/permissions
@@ -23,20 +24,14 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return ApiError.unauthorized()
     }
 
     // Check if user can manage others (trader or admin)
     const canManage = await canManageUsers(user.id)
 
     if (!canManage) {
-      return NextResponse.json(
-        { error: 'Forbidden: Only traders and admins can manage permissions' },
-        { status: 403 }
-      )
+      return ApiError.forbidden('Only traders and admins can manage permissions')
     }
 
     // Await params (Next.js 15+ requirement)
@@ -49,17 +44,11 @@ export async function PUT(
     console.log('[API permissions PUT] Target user role:', targetRole)
 
     if (!targetRole) {
-      return NextResponse.json(
-        { error: 'Target user not found' },
-        { status: 404 }
-      )
+      return ApiError.notFound('Target user not found')
     }
 
     if (targetRole !== 'viewer') {
-      return NextResponse.json(
-        { error: 'Can only manage permissions for viewer users' },
-        { status: 403 }
-      )
+      return ApiError.forbidden('Can only manage permissions for viewer users')
     }
 
     // Parse request body
@@ -68,10 +57,12 @@ export async function PUT(
 
     // Validate input
     if (!Array.isArray(symbols)) {
-      return NextResponse.json(
-        { error: 'Symbols must be an array' },
-        { status: 400 }
-      )
+      return ApiError.badRequest('Symbols must be an array')
+    }
+
+    // Validate symbols array length
+    if (symbols.length > API_LIMITS.MAX_STOCKS_PER_VIEWER) {
+      return ApiError.badRequest(`Maximum ${API_LIMITS.MAX_STOCKS_PER_VIEWER} stocks per viewer`)
     }
 
     // Delete all existing permissions for this user
@@ -82,10 +73,7 @@ export async function PUT(
 
     if (deleteError) {
       console.error('[API permissions PUT] Error deleting permissions:', deleteError)
-      return NextResponse.json(
-        { error: 'Failed to update permissions' },
-        { status: 500 }
-      )
+      return ApiError.internal('Failed to update permissions', deleteError)
     }
 
     // Insert new permissions
@@ -102,25 +90,15 @@ export async function PUT(
 
       if (insertError) {
         console.error('[API permissions PUT] Error inserting permissions:', insertError)
-        return NextResponse.json(
-          { error: 'Failed to update permissions' },
-          { status: 500 }
-        )
+        return ApiError.internal('Failed to update permissions', insertError)
       }
     }
 
     console.log(`[API permissions PUT] Updated permissions for user ${targetUserId}: ${symbols.join(', ')}`)
 
-    return NextResponse.json({
-      success: true,
-      message: 'Permissions updated successfully',
-      symbols
-    })
+    return ApiSuccess.ok({ symbols }, 'Permissions updated successfully')
   } catch (error) {
     console.error('[API permissions PUT] Exception:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return ApiError.internal('Internal server error', error)
   }
 }

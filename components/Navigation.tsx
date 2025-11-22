@@ -57,7 +57,7 @@ export function Navigation() {
                 </Link>
               )}
 
-              {user && (role === 'trader' || role === 'admin') && (
+              {user && !roleLoading && (role === 'trader' || role === 'admin') && (
                 <Link
                   href="/manage-viewers"
                   className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -70,7 +70,7 @@ export function Navigation() {
                 </Link>
               )}
 
-              {user && role === 'admin' && (
+              {user && !roleLoading && role === 'admin' && (
                 <Link
                   href="/admin"
                   className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -173,7 +173,7 @@ export function Navigation() {
               </Link>
             )}
 
-            {user && (role === 'trader' || role === 'admin') && (
+            {user && !roleLoading && (role === 'trader' || role === 'admin') && (
               <Link
                 href="/manage-viewers"
                 onClick={() => setMobileMenuOpen(false)}
@@ -187,7 +187,7 @@ export function Navigation() {
               </Link>
             )}
 
-            {user && role === 'admin' && (
+            {user && !roleLoading && role === 'admin' && (
               <Link
                 href="/admin"
                 onClick={() => setMobileMenuOpen(false)}

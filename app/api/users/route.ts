@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { NextResponse } from 'next/server'
 import { canManageUsers } from '@/lib/permissions-server'
+import { ApiError, ApiSuccess } from '@/lib/api-response'
 
 /**
  * GET /api/users
@@ -16,20 +16,14 @@ export async function GET() {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return ApiError.unauthorized()
     }
 
     // Check if user can manage others (trader or admin)
     const canManage = await canManageUsers(user.id)
 
     if (!canManage) {
-      return NextResponse.json(
-        { error: 'Forbidden: Only traders and admins can view users' },
-        { status: 403 }
-      )
+      return ApiError.forbidden('Only traders and admins can view users')
     }
 
     // Fetch all users with their roles
@@ -44,10 +38,7 @@ export async function GET() {
 
     if (rolesError) {
       console.error('[API /users GET] Error fetching user roles:', rolesError)
-      return NextResponse.json(
-        { error: 'Failed to fetch users' },
-        { status: 500 }
-      )
+      return ApiError.internal('Failed to fetch users', rolesError)
     }
 
     // Fetch auth.users data for emails using admin client
@@ -56,6 +47,7 @@ export async function GET() {
 
     if (authUsersError) {
       console.error('[API /users GET] Error fetching auth users:', authUsersError)
+      return ApiError.internal('Failed to fetch auth users', authUsersError)
     }
 
     // Combine data
@@ -80,12 +72,9 @@ export async function GET() {
       })
     )
 
-    return NextResponse.json({ users: usersWithDetails })
+    return ApiSuccess.ok({ users: usersWithDetails })
   } catch (error) {
     console.error('[API /users GET] Exception:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return ApiError.internal('Internal server error', error)
   }
 }

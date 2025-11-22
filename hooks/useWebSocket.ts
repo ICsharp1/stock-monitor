@@ -30,6 +30,7 @@ interface BinanceTickerMessage {
  * - Error handling for malformed messages
  *
  * @param symbols - Array of crypto symbols to track (e.g., ['BTCUSDT', 'ETHUSDT'])
+ * @param options - Optional configuration for reconnection delays
  * @returns Object with prices Map, connection status, errors, and manual reconnect function
  *
  * @example
@@ -42,7 +43,13 @@ interface BinanceTickerMessage {
  * }
  * ```
  */
-export function useWebSocket(symbols: string[]) {
+export function useWebSocket(
+  symbols: string[],
+  options?: {
+    maxReconnectDelay?: number
+    baseDelay?: number
+  }
+) {
   const [prices, setPrices] = useState<Map<string, TickerData>>(new Map())
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
   const [error, setError] = useState<Error | null>(null)
@@ -53,31 +60,49 @@ export function useWebSocket(symbols: string[]) {
   const mountedRef = useRef(true)
 
   // Configuration constants
-  const MAX_RECONNECT_DELAY = 30000 // 30 seconds
-  const BASE_DELAY = 1000 // 1 second
+  const MAX_RECONNECT_DELAY = options?.maxReconnectDelay ?? 30000 // 30 seconds
+  const BASE_DELAY = options?.baseDelay ?? 1000 // 1 second
 
   /**
-   * Calculate exponential backoff delay for reconnection attempts
-   * Formula: min(baseDelay * 2^attempts, maxDelay)
-   * Sequence: 1s, 2s, 4s, 8s, 16s, 30s (capped)
+   * Calculate tiered backoff delay for reconnection attempts
+   * Phase 1 (attempts 1-10):  Exponential backoff (1s, 2s, 4s, 8s, 16s, 30s...)
+   * Phase 2 (attempts 11-20): 1 minute between attempts
+   * Phase 3 (attempts 21-30): 5 minutes between attempts
+   * Phase 4 (attempts 31+):   10 minutes between attempts (forever)
    */
   const getReconnectDelay = useCallback(() => {
-    const delay = Math.min(
-      BASE_DELAY * Math.pow(2, reconnectAttemptsRef.current),
-      MAX_RECONNECT_DELAY
-    )
-    return delay
-  }, [])
+    const attempt = reconnectAttemptsRef.current
+
+    // Phase 1: Fast recovery (attempts 1-10) - exponential backoff
+    if (attempt <= 10) {
+      return Math.min(BASE_DELAY * Math.pow(2, attempt), MAX_RECONNECT_DELAY)
+    }
+
+    // Phase 2: Extended outage (attempts 11-20) - 1 minute
+    if (attempt <= 20) {
+      return 60_000 // 1 minute
+    }
+
+    // Phase 3: Long outage (attempts 21-30) - 5 minutes
+    if (attempt <= 30) {
+      return 300_000 // 5 minutes
+    }
+
+    // Phase 4: Very long outage (attempts 31+) - 10 minutes forever
+    return 600_000 // 10 minutes
+  }, [BASE_DELAY, MAX_RECONNECT_DELAY])
 
   /**
    * Build Binance WebSocket URL for multiple ticker streams
    * Format: wss://stream.binance.com:9443/stream?streams=symbol1@ticker/symbol2@ticker
+   * URL base can be configured via NEXT_PUBLIC_BINANCE_WS_URL env variable
    */
   const buildWebSocketUrl = useCallback((symbolList: string[]) => {
     const streams = symbolList
       .map(symbol => `${symbol.toLowerCase()}@ticker`)
       .join('/')
-    return `wss://stream.binance.com:9443/stream?streams=${streams}`
+    const wsBase = process.env.NEXT_PUBLIC_BINANCE_WS_URL || 'wss://stream.binance.com:9443'
+    return `${wsBase}/stream?streams=${streams}`
   }, [])
 
   /**

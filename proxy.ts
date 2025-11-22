@@ -2,7 +2,7 @@ import { updateSession } from '@/lib/supabase/middleware'
 import { type NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { user, response } = await updateSession(request)
 
   // Define public routes that don't require authentication

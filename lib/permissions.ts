@@ -54,8 +54,9 @@ export async function getUserAllowedSymbols(userId: string): Promise<string[]> {
           return []
         }
 
-        const { stocks } = await response.json()
-        const symbols = stocks ? stocks.map((s: any) => s.symbol) : []
+        const result = await response.json()
+        const stocks = result.data?.stocks || []
+        const symbols = stocks.map((s: any) => s.symbol)
         console.log(`[Permissions] ${role} user - returning all symbols from stocks table:`, symbols)
         return symbols
       } catch (err) {
@@ -164,32 +165,3 @@ export async function checkMultipleSymbols(
   }
 }
 
-/**
- * Check if a user can manage other users (traders and admins)
- * @param userId - The user's ID
- * @returns true if the user is a trader or admin
- */
-export async function canManageUsers(userId: string): Promise<boolean> {
-  try {
-    const role = await getUserRole(userId)
-    return role === 'trader' || role === 'admin'
-  } catch (error) {
-    console.error('Exception in canManageUsers:', error)
-    return false
-  }
-}
-
-/**
- * Check if a user can add new stocks to the master list (admins only)
- * @param userId - The user's ID
- * @returns true if the user is an admin
- */
-export async function canAddStocks(userId: string): Promise<boolean> {
-  try {
-    const role = await getUserRole(userId)
-    return role === 'admin'
-  } catch (error) {
-    console.error('Exception in canAddStocks:', error)
-    return false
-  }
-}

@@ -179,17 +179,3 @@ export function useIsAdmin(): { isAdmin: boolean; loading: boolean } {
     loading
   }
 }
-
-/**
- * Hook to check if the current user has any of the specified roles
- * @param allowedRoles - Array of allowed roles
- * @returns Object with hasAnyRole boolean and loading state
- */
-export function useHasAnyRole(allowedRoles: UserRole[]): { hasAnyRole: boolean; loading: boolean } {
-  const { role, loading } = useUserRole()
-
-  return {
-    hasAnyRole: role ? allowedRoles.includes(role) : false,
-    loading
-  }
-}

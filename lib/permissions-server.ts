@@ -108,41 +108,6 @@ export async function getServerUserRole(userId: string): Promise<UserRole | null
 }
 
 /**
- * Get all symbols a user can view (server-side)
- * @param userId - The user's ID
- * @returns Array of stock symbols the user can view
- */
-export async function getServerAllowedSymbols(userId: string): Promise<string[]> {
-  try {
-    const supabase = await createClient()
-
-    // Check if admin first - admins have access to all symbols
-    const role = await getServerUserRole(userId)
-    if (role === 'admin') {
-      return ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'DOGEUSDT', 'SOLUSDT', 'XRPUSDT']
-    }
-
-    // Get explicit permissions for non-admin users
-    const { data, error } = await supabase
-      .from('stock_permissions')
-      .select('symbol')
-      .eq('user_id', userId)
-      .eq('can_view', true)
-
-    if (error) {
-      console.error('Error fetching user permissions:', error)
-      return []
-    }
-
-    if (!data || data.length === 0) return []
-    return data.map(row => row.symbol)
-  } catch (error) {
-    console.error('Exception in getServerAllowedSymbols:', error)
-    return []
-  }
-}
-
-/**
  * Server-side check if user can view a symbol (returns boolean instead of throwing)
  * @param userId - The user's ID
  * @param symbol - The stock symbol to check

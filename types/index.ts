@@ -32,3 +32,6 @@ export interface AuthState {
   user: User | null
   loading: boolean
 }
+
+// Export API types
+export * from './api'

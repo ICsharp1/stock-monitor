@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
 import { normalizeSymbol, validateBinanceSymbol, stockExists } from '@/lib/stocks'
 import { canAddStocks } from '@/lib/permissions-server'
+import { ApiError, ApiSuccess, validateRequiredFields, validateFieldType } from '@/lib/api-response'
 
 /**
  * GET /api/stocks
@@ -16,10 +16,7 @@ export async function GET() {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return ApiError.unauthorized()
     }
 
     // Fetch all stocks
@@ -30,19 +27,13 @@ export async function GET() {
 
     if (error) {
       console.error('[API /stocks GET] Error fetching stocks:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch stocks' },
-        { status: 500 }
-      )
+      return ApiError.internal('Failed to fetch stocks', error)
     }
 
-    return NextResponse.json({ stocks: stocks || [] })
+    return ApiSuccess.ok({ stocks: stocks || [] })
   } catch (error) {
     console.error('[API /stocks GET] Exception:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return ApiError.internal('Internal server error', error)
   }
 }
 
@@ -62,40 +53,30 @@ export async function POST(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return ApiError.unauthorized()
     }
 
     // Check if user is an admin
     const isAdminUser = await canAddStocks(user.id)
 
     if (!isAdminUser) {
-      return NextResponse.json(
-        { error: 'Forbidden: Only admins can add stocks' },
-        { status: 403 }
-      )
+      return ApiError.forbidden('Only admins can add stocks')
     }
 
-    // Parse request body
+    // Parse and validate request body
     const body = await request.json()
+
+    try {
+      validateRequiredFields<{ symbol: string; name: string }>(body, ['symbol', 'name'])
+      validateFieldType(body.symbol, 'symbol', 'string')
+      validateFieldType(body.name, 'name', 'string')
+    } catch (validationError) {
+      return ApiError.badRequest(
+        validationError instanceof Error ? validationError.message : 'Invalid request body'
+      )
+    }
+
     const { symbol: rawSymbol, name } = body
-
-    // Validate input
-    if (!rawSymbol || typeof rawSymbol !== 'string') {
-      return NextResponse.json(
-        { error: 'Invalid symbol' },
-        { status: 400 }
-      )
-    }
-
-    if (!name || typeof name !== 'string') {
-      return NextResponse.json(
-        { error: 'Invalid name' },
-        { status: 400 }
-      )
-    }
 
     // Normalize symbol (e.g., "LINK" -> "LINKUSDT")
     const symbol = normalizeSymbol(rawSymbol)
@@ -103,23 +84,17 @@ export async function POST(request: Request) {
     // Check if stock already exists
     const exists = await stockExists(symbol)
     if (exists) {
-      return NextResponse.json(
-        { error: `Stock ${symbol} already exists in the master list` },
-        { status: 409 }
-      )
+      return ApiError.conflict(`Stock ${symbol} already exists in the master list`)
     }
 
     // Validate with Binance API
     const isValid = await validateBinanceSymbol(symbol)
 
     if (!isValid) {
-      return NextResponse.json(
-        { error: `Symbol ${symbol} not found on Binance or not actively trading` },
-        { status: 400 }
-      )
+      return ApiError.badRequest(`Symbol ${symbol} not found on Binance or not actively trading`)
     }
 
-    // Add stock to database (using service role to bypass RLS)
+    // Add stock to database
     const serviceClient = await createClient()
     const { data, error } = await serviceClient
       .from('stocks')
@@ -132,27 +107,17 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error('[API /stocks POST] Error inserting stock:', error)
-      return NextResponse.json(
-        { error: 'Failed to add stock' },
-        { status: 500 }
-      )
+      return ApiError.internal('Failed to add stock', error)
     }
 
     console.log(`[API /stocks POST] Stock added successfully: ${symbol}`)
 
-    return NextResponse.json(
-      {
-        success: true,
-        stock: data,
-        message: `Stock ${symbol} added successfully`
-      },
-      { status: 201 }
+    return ApiSuccess.created(
+      { stock: data },
+      `Stock ${symbol} added successfully`
     )
   } catch (error) {
     console.error('[API /stocks POST] Exception:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return ApiError.internal('Internal server error', error)
   }
 }
