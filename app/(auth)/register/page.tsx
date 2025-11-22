@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, FormEvent } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useAuth } from '@/app/providers/auth-provider'
 import Link from 'next/link'
 
 export default function RegisterPage() {
@@ -12,8 +11,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
-  const supabase = createClient()
+  const { signUp } = useAuth()
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -36,13 +34,7 @@ export default function RegisterPage() {
     }
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      })
+      const { error } = await signUp(email, password)
 
       if (error) {
         // Handle specific error cases
@@ -57,15 +49,9 @@ export default function RegisterPage() {
         return
       }
 
-      // Check if email confirmation is required
-      if (data.user && !data.session) {
-        setSuccess(true)
-        setLoading(false)
-      } else {
-        // Auto-login if no email confirmation required
-        router.push('/dashboard')
-        router.refresh()
-      }
+      // Show success message - user needs to confirm email
+      setSuccess(true)
+      setLoading(false)
     } catch (err) {
       setError('An unexpected error occurred. Please try again.')
       setLoading(false)

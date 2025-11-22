@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, FormEvent, Suspense } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/app/providers/auth-provider'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -15,7 +15,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
+  const { signIn } = useAuth()
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -23,10 +23,7 @@ function LoginForm() {
     setLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { error } = await signIn(email, password)
 
       if (error) {
         setError(error.message)
@@ -36,8 +33,10 @@ function LoginForm() {
 
       // Get redirect URL or default to dashboard
       const redirectTo = searchParams.get('redirectTo') || '/dashboard'
-      router.push(redirectTo)
-      router.refresh()
+
+      // Use window.location for a full page navigation
+      // This ensures cookies are properly set and avoids stale state
+      window.location.href = redirectTo
     } catch (err) {
       setError('An unexpected error occurred. Please try again.')
       setLoading(false)
